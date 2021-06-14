@@ -15,6 +15,11 @@ import { registerRoute } from 'workbox-routing';
 import { StaleWhileRevalidate } from 'workbox-strategies';
 
 declare const self: ServiceWorkerGlobalScope;
+// declare const self: any;
+
+const CACHE_NAME = "cache_sample";
+const urlsToCache = ["index.html", "offline.html"];
+const version = "v0.0.1";
 
 clientsClaim();
 
@@ -78,3 +83,59 @@ self.addEventListener('message', (event) => {
 });
 
 // Any other custom service worker logic can go here.
+
+//install sw
+self.addEventListener("install", (event: any) => {
+  console.log("sw install event");
+  event.waitUntil(
+    caches.open(version + CACHE_NAME).then((cache) => {
+      console.log("opened cache");
+      return cache.addAll(urlsToCache);
+    })
+  );
+});
+
+//Activate the sw after install
+//Place where old caches are cleared
+self.addEventListener("activate", (event: any) => {
+  console.log("sw activate event");
+  event.waitUntil(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
+        cacheNames
+          .filter((cacheName) => {
+            return cacheName.indexOf(version) !== 0;
+          })
+          .map(function (cachName) {
+            return caches.delete(cachName);
+          })
+      )
+    )
+  );
+});
+
+//listen for requests
+self.addEventListener("fetch", (event: any) => {
+  event.respondWith(
+    caches.open(event.request.url).then(function (cache) {
+      return caches.match(event.request).then((response) => {
+        if (navigator.onLine) {
+          return fetch(event.request).then(function (response) {
+            if (event.request.method == "GET") {
+              cache.put(event.request, response.clone());
+            }
+            return response;
+          });
+        } else {
+          if (response) {
+            return response;
+          } else {
+            return fetch(event.request).catch(() =>
+              caches.match("offline.html")
+            );
+          }
+        }
+      });
+    })
+  );
+});
